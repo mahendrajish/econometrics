@@ -1,0 +1,211 @@
+library(data.table)
+library(fixest)
+library(ggplot2)
+
+
+# Question
+#  Consider the data in the table that shows the hypothetical treatment effect
+#  of a Job Training Program on Earnings.
+#  Let the ten participants represent the population of interest.
+
+# i.) Calculate the following: ATE ; ATT ; ATU.
+
+
+df <- data.table(id=1:10,treat=c(1,1,1,1,1,0,0,0,0,0), y=c(40,45,42,38,46,30,28,32,27,33))
+
+# Summaries
+mean_treat    <- df[treat == 1, mean(y)]  # 42.2
+mean_control  <- df[treat == 0, mean(y)]  # 30.0
+sdo <- mean_treat - mean_control          # Simple Difference in Outcomes = 12.2
+
+pi  <- df[, mean(treat)]
+
+# Under random assignment, the counterfactual mean for treated equals the
+# control mean, so selection bias = 0 and ATE = ATT = ATU = SDO.
+ATE <- sdo
+ATT <- sdo
+ATU <- sdo
+
+
+cat(sprintf("Mean Treated   = %.1f\n", mean_treat))
+cat(sprintf("Mean Control   = %.1f\n", mean_control))
+cat(sprintf("SDO (post means) = %.1f\n\n", sdo))
+
+cat(sprintf("ATE (RCT) = %.1f\n", ATE))
+cat(sprintf("ATT (RCT) = %.1f\n", ATT))
+cat(sprintf("ATU (RCT) = %.1f\n\n", ATU))
+
+
+# OLS check
+reg <- feols(y ~ treat, data = df, vcov = "hc1")
+reg
+# Coefficient for treat is same as SDO (= 12.2)
+
+
+selection_bias <- 0
+lhs <- sdo
+rhs <- ATE + selection_bias + (1 - pi) * (ATT - ATU)
+
+cat(sprintf("\nIdentity check:\n  LHS (SDO) = %.1f\n  RHS = ATE + SelBias + (1-pi)*(ATT-ATU) = %.1f\n", lhs, rhs))
+
+
+# Visualization: Density plot
+burgundy <- "#800020"
+
+p <- ggplot(df, aes(x = y, fill = factor(treat), color = factor(treat))) +
+  geom_density(alpha = 0.25, linewidth = 1) +
+  scale_fill_manual(values = c("0" = "gray70", "1" = burgundy),
+                    labels = c("0 = Control", "1 = Treated")) +
+  scale_color_manual(values = c("0" = "gray50", "1" = burgundy),
+                     labels = c("0 = Control", "1 = Treated")) +
+  geom_vline(xintercept = mean_treat,   color = burgundy,  linetype = "dashed") +
+  geom_vline(xintercept = mean_control, color = "gray40",  linetype = "dashed") +
+  labs(title = "Q5 (i): π = 0.50, First 5 Treated",
+    subtitle = sprintf("Treated mean = %.1f | Control mean = %.1f | SDO = %.1f",
+                       mean_treat, mean_control, sdo),
+    x = "Earnings ($000)", y = "Density",
+    fill = "Group", color = "Group"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", color = burgundy, hjust = 0.5),
+    plot.subtitle = element_text(color = "gray30", hjust = 0.5),
+    legend.position = "top"
+  )
+print(p)
+
+
+
+
+
+
+# ii) The SDO is computed as the post-treatment mean difference between treated and untreated groups.
+#     Now suppose first 4 observations or 40% of the sample is treated (π = 0.40) and 60% is untreated (π = 0.60).
+#     How do ATE, ATT, and ATU change?
+
+
+# First 4 treated (pi = 0.40), rest untreated
+# Data
+df2 <- data.table(id = 1:10,y  = c(40,45,42,38,46, 30,28,32,27,33))
+df2[, treat := as.integer(id <= 4)] # Enter extra column with first 4 treated
+df2
+
+pi2 <- df2[, mean(treat)]
+
+# Summaries
+mean_treat2   <- df2[treat == 1, mean(y)]   # 41.25
+mean_control2 <- df2[treat == 0, mean(y)]   # 32.67
+sdo2 <- mean_treat2 - mean_control2          # ≈ 8.58
+
+cat(sprintf("Mean Treated   = %.2f\n", mean_treat2))
+cat(sprintf("Mean Control   = %.2f\n", mean_control2))
+cat(sprintf("SDO (post means) = %.2f\n", sdo2))
+cat(sprintf("pi (share treated) = %.2f\n\n", pi2))
+
+
+# Under RCT assumption:
+ATE <- sdo2; ATT <- sdo2; ATU <- sdo2
+cat(sprintf("ATE (RCT) = %.2f\nATT (RCT) = %.2f\nATU (RCT) = %.2f\n\n", ATE, ATT, ATU))
+
+# OLS check
+reg <- feols(y ~ treat, data = df, vcov = "hc1"); print(reg)
+
+
+# Density plot
+p2 <- ggplot(df, aes(x = y, fill = factor(treat), color = factor(treat))) +
+  geom_density(alpha = 0.25, linewidth = 1) +
+  scale_fill_manual(values = c("0" = "gray70", "1" = burgundy),
+                    labels = c("0 = Control", "1 = Treated")) +
+  scale_color_manual(values = c("0" = "gray50", "1" = burgundy),
+                     labels = c("0 = Control", "1 = Treated")) +
+  geom_vline(xintercept = mean_treat,   color = burgundy, linetype = "dashed") +
+  geom_vline(xintercept = mean_control, color = "gray40", linetype = "dashed") +
+  labs(
+    title = "Q5 (ii): π = 0.40, First 4 Treated",
+    subtitle = sprintf("Treated mean = %.2f | Control mean = %.2f | SDO = %.2f",
+                       mean_treat, mean_control, sdo),
+    x = "Earnings ($000)", y = "Density",
+    fill = "Group", color = "Group"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", color = burgundy, hjust = 0.5),
+    plot.subtitle = element_text(color = "gray30", hjust = 0.5),
+    legend.position = "top"
+  )
+print(p2)
+
+
+
+
+# iii) Now suppose 40% of the sample is randomly assigned and is treated (π = 0.40)
+#      and 60% is untreated (π = 0.60). What changes?
+
+
+
+
+# The specific 4 treated are randomly chosen.
+# The numerical SDO will vary from draw to draw.
+set.seed(12345)
+
+df3 <- data.table(id = 1:10, y  = c(40,45,42,38,46, 30,28,32,27,33))
+
+# Randomly choose 40% to be treated
+treated_ids <- sample(df3$id, size = 4, replace = FALSE)
+df3[, treat := as.integer(id %in% treated_ids)]
+pi3 <- df[, mean(treat)]
+
+# Summaries
+mean_treat3   <- df[treat == 1, mean(y)]
+mean_control3 <- df[treat == 0, mean(y)]
+sdo3 <- mean_treat3 - mean_control3
+
+cat(sprintf("Mean Treated   = %.2f\n", mean_treat3))
+cat(sprintf("Mean Control   = %.2f\n", mean_control3))
+cat(sprintf("SDO (post means) = %.2f\n", sdo3))
+cat(sprintf("pi (share treated) = %.2f\n\n", pi3))
+
+
+# Under RCT assumption:
+ATE <- sdo3; ATT <- sdo3; ATU <- sdo3
+cat(sprintf("ATE (RCT) = %.2f\nATT (RCT) = %.2f\nATU (RCT) = %.2f\n\n", ATE, ATT, ATU))
+
+# OLS check
+reg <- feols(y ~ treat, data = df3, vcov = "hc1")
+print(reg)
+
+
+# Density plot
+
+p3 <- ggplot(df, aes(x = y, fill = factor(treat), color = factor(treat))) +
+  geom_density(alpha = 0.25, linewidth = 1) +
+  scale_fill_manual(values = c("0" = "gray70", "1" = burgundy),
+                    labels = c("0 = Control", "1 = Treated")) +
+  scale_color_manual(values = c("0" = "gray50", "1" = burgundy),
+                     labels = c("0 = Control", "1 = Treated")) +
+  geom_vline(xintercept = mean_treat,   color = burgundy, linetype = "dashed") +
+  geom_vline(xintercept = mean_control, color = "gray40", linetype = "dashed") +
+  labs(
+    title = "Q5 (iii): π = 0.40, Random 4 Treated",
+    subtitle = sprintf("Treated mean = %.2f | Control mean = %.2f | SDO = %.2f",
+                       mean_treat, mean_control, sdo),
+    x = "Earnings ($000)", y = "Density",
+    fill = "Group", color = "Group"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", color = burgundy, hjust = 0.5),
+    plot.subtitle = element_text(color = "gray30", hjust = 0.5),
+    legend.position = "top"
+  )
+print(p3)
+
+
+
+# The post-treatment mean difference (SDO) is a valid causal estimate only with random assignment (or strong identification).
+# Group composition matters: moving a large outcome into control (or out of treated) can change SDO a lot in small samples.
+# Under RCT, ATE = ATT = ATU, regardless of π; in finite samples, the numerical estimate depends on which units are treated.
+
+
+
+
